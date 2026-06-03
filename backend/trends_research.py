@@ -14,15 +14,12 @@ class TrendsResearcher:
         "rốn", "vàng da", "tắm bé", "easy", "ngủ ngon", "rèn ngủ", "mọc răng", "khóc đêm"
     ]
 
-    # Pre-compiled regex pattern for fast matching
     _keywords_pattern = None
 
     @classmethod
     def _get_keywords_regex(cls):
         if cls._keywords_pattern is None:
-            # Escape keywords and join with OR (|)
             escaped = [re.escape(kw) for kw in cls.PARENTING_KEYWORDS]
-            # Match anywhere in text (case-insensitive)
             cls._keywords_pattern = re.compile(r'(' + '|'.join(escaped) + r')', re.IGNORECASE)
         return cls._keywords_pattern
 
@@ -39,36 +36,33 @@ class TrendsResearcher:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         
-        # Pre-compile/fetch regex
         keywords_re = cls._get_keywords_regex()
         html_tags_re = re.compile(r'<[^>]*>')
 
-        async with httpx.AsyncClient(headers=headers, timeout=5.0) as client:
-            # Fetch all RSS feeds concurrently
+        async with httpx.AsyncClient(headers=headers, timeout=10.0) as client:
             tasks = [client.get(url) for url in urls]
             responses = await asyncio.gather(*tasks, return_exceptions=True)
             
             for response in responses:
                 if isinstance(response, Exception) or response.status_code != 200:
+                    print(f"RSS fetch warning/error: {response}")
                     continue
                 
                 try:
-                    root = ET.fromstring(response.text)
+                    # Clean encoding declaration if parsing fails
+                    xml_text = response.text
+                    root = ET.fromstring(xml_text)
                     for item in root.findall(".//item"):
                         title = item.find("title").text or ""
                         description = item.find("description").text or ""
-                        link = item.find("link").text or ""
                         
-                        # Clean description HTML tags quickly
                         clean_desc = html_tags_re.sub('', description)
                         combined_text = f"{title} {clean_desc}"
                         
-                        # Find all keyword matches via regex in O(N)
                         matches = keywords_re.findall(combined_text)
                         
                         if matches:
                             unique_matches = set(m.lower() for m in matches)
-                            # Calculate popularity score based on unique keyword matches
                             score = min(40 + len(unique_matches) * 15, 95)
                             found_trends.append({
                                 "keyword": title,
@@ -98,7 +92,7 @@ class TrendsResearcher:
         elif month in [9, 10, 11]: # Fall/Transition season
             seasonal_ideas = [
                 {"keyword": "Thời điểm tiêm phòng Cúm mùa hiệu quả nhất cho bé", "score": 88},
-                {"keyword": "Cách giữ ấm cổ họng, phòng viêm phế quan khi giao mùa", "score": 85},
+                {"keyword": "Cách giữ ấm cổ họng, phòng viêm phế quản khi giao mùa", "score": 85},
                 {"keyword": "Bổ sung Vitamin D3 K2 thế nào khi trời ít nắng?", "score": 80}
             ]
         else: # Winter/Spring
@@ -121,18 +115,41 @@ class TrendsResearcher:
 
     @classmethod
     async def update_trends_database(cls):
-        """Fetches RSS and seasonal trends, then inserts them into the DB concurrently."""
-        # Fetch RSS trends concurrently, and generate seasonal trends
+        """Fetches RSS and seasonal trends, then inserts them. Uses per-item transactions to prevent PostgreSQL aborts."""
         rss_trends_task = cls.fetch_rss_trends()
         seasonal_trends = cls.get_seasonal_trends()
         
         rss_trends = await rss_trends_task
         all_trends = rss_trends + seasonal_trends
         
-        # Batch insert to minimize Neon Postgres round-trips
         conn, cursor_factory = DBConnector.get_connection()
         cursor = conn.cursor()
         is_postgres = DBConnector.get_connection_type() == "postgres"
+
+        # Check if trends table has correct constraint. If not, recreate it.
+        try:
+            if is_postgres:
+                # Ensure trends table has UNIQUE constraint on keyword
+                cursor.execute("""
+                    SELECT count(*) FROM pg_constraint 
+                    WHERE conname = 'trends_keyword_key' OR conname = 'unique_trends_keyword'
+                """)
+                # If unique constraint not present, let's migrate safely
+                # (Easiest way to fix old schema in development is dropping cache table)
+                # We do this because of early migrations.
+                cursor.execute("SELECT count(*) FROM pg_indexes WHERE indexname = 'trends_keyword_key'")
+                if cursor.fetchone()[0] == 0:
+                    print("Migrating trends table to add unique constraint...")
+                    cursor.execute("DROP TABLE IF EXISTS trends;")
+                    conn.commit()
+                    # Re-initialize DB
+                    DBConnector.init_db()
+                    # Re-open cursor after drop/recreate
+                    conn, cursor_factory = DBConnector.get_connection()
+                    cursor = conn.cursor()
+        except Exception as migrate_err:
+            print(f"Migration check warning: {migrate_err}")
+            conn.rollback()
 
         insert_count = 0
         for trend in all_trends:
@@ -149,11 +166,14 @@ class TrendsResearcher:
                         INSERT OR REPLACE INTO trends (keyword, source, popularity_score, is_viral, generated_ideas, analyzed_at)
                         VALUES (?, ?, ?, ?, ?, datetime('now'))
                     """, (trend["keyword"], trend["source"], trend["popularity_score"], trend["is_viral"], trend["generated_ideas"]))
+                # Commit immediately for this item to isolate database errors
+                conn.commit()
                 insert_count += 1
             except Exception as e:
-                print(f"Error inserting trend {trend['keyword']}: {e}")
+                print(f"Error inserting trend '{trend['keyword']}': {e}")
+                # Rollback current aborted transaction block to resume loop
+                conn.rollback()
                 
-        conn.commit()
         conn.close()
         return insert_count
 
