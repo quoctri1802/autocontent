@@ -86,6 +86,20 @@ async def fetch_trends():
     count = await TrendsResearcher.update_trends_database()
     return {"message": "Trends updated successfully.", "items_added": count}
 
+@app.get("/api/trends/debug")
+async def debug_trends():
+    import traceback
+    try:
+        count = await TrendsResearcher.update_trends_database()
+        return {"status": "success", "items_added": count}
+    except Exception as e:
+        return {
+            "status": "error",
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 # 2. Articles CRUD
 @app.get("/api/articles")
 def get_articles():
