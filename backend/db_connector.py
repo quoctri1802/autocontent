@@ -135,9 +135,9 @@ class DBConnector:
             voice_model VARCHAR(100) DEFAULT 'vi-VN-HoaiMyNeural',
             status VARCHAR(50) DEFAULT 'draft',
             video_path VARCHAR(512),
-            tiktok_published {boolean_type} DEFAULT 0,
-            facebook_published {boolean_type} DEFAULT 0,
-            youtube_published {boolean_type} DEFAULT 0,
+            tiktok_published {boolean_type} DEFAULT FALSE,
+            facebook_published {boolean_type} DEFAULT FALSE,
+            youtube_published {boolean_type} DEFAULT FALSE,
             created_at {timestamp_type},
             scheduled_at TIMESTAMP
         )
