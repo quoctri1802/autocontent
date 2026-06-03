@@ -145,22 +145,27 @@ def diagnose_system():
 
     # 3. Dry Run DB Insert
     if article_data:
+        import time
+        import datetime
         try:
+            test_id = f"test_{int(time.time())}"
             query = """
-                INSERT INTO articles (title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s, %s, NOW())
+                INSERT INTO articles (id, title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'draft', %s, %s, %s)
                 RETURNING id
             """ if DBConnector.get_connection_type() == "postgres" else """
-                INSERT INTO articles (title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, datetime('now'))
+                INSERT INTO articles (id, title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
             """
             title = article_data.get("title", "")[:250]
             meta_title = article_data.get("meta_title", title)[:250]
             category = article_data.get("category", "Chăm sóc bé")[:95]
             subcategory = article_data.get("subcategory", "")[:95]
             tags = article_data.get("tags", "")[:250]
+            today_str = datetime.date.today().isoformat()
 
             params = (
+                test_id,
                 title,
                 article_data.get("content", ""),
                 article_data.get("summary", ""),
@@ -168,16 +173,16 @@ def diagnose_system():
                 subcategory,
                 tags,
                 meta_title,
-                article_data.get("meta_description", article_data.get("summary", ""))
+                article_data.get("meta_description", article_data.get("summary", "")),
+                today_str
             )
             res = DBConnector.execute_query(query, params)
             result["dry_run_db_insert"] = "success"
             result["dry_run_db_insert_result"] = res
             
-            if res and res[0].get("id"):
-                cleanup_query = "DELETE FROM articles WHERE id = %s" if DBConnector.get_connection_type() == "postgres" else "DELETE FROM articles WHERE id = ?"
-                DBConnector.execute_query(cleanup_query, (res[0]["id"],))
-                result["dry_run_db_cleanup"] = "success"
+            cleanup_query = "DELETE FROM articles WHERE id = %s" if DBConnector.get_connection_type() == "postgres" else "DELETE FROM articles WHERE id = ?"
+            DBConnector.execute_query(cleanup_query, (test_id,))
+            result["dry_run_db_cleanup"] = "success"
         except Exception as insert_err:
             result["dry_run_db_insert"] = "failed"
             result["errors"].append({"step": "dry_run_db_insert", "error": str(insert_err), "traceback": traceback.format_exc()})
@@ -213,19 +218,43 @@ async def debug_trends():
 def get_articles():
     return DBConnector.execute_query("SELECT * FROM articles ORDER BY created_at DESC")
 
+def get_next_article_id():
+    try:
+        rows = DBConnector.execute_query("SELECT id FROM articles")
+        if not rows:
+            return "mt_01"
+        max_idx = 0
+        for r in rows:
+            val = r.get("id")
+            if val and val.startswith("mt_"):
+                try:
+                    num = int(val.split("_")[1])
+                    if num > max_idx:
+                        max_idx = num
+                except:
+                    pass
+        return f"mt_{max_idx + 1:02d}"
+    except Exception as e:
+        import time
+        return f"mt_{int(time.time())}"
+
 @app.post("/api/articles/generate")
 def generate_article(req: TopicRequest):
     import traceback
+    import datetime
     try:
         article_data = ContentGenerator.generate_article(req.topic)
+        new_id = get_next_article_id()
+        today_str = datetime.date.today().isoformat()
+        
         # Save as draft
         query = """
-            INSERT INTO articles (title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s, %s, NOW())
+            INSERT INTO articles (id, title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'draft', %s, %s, %s)
             RETURNING id
         """ if DBConnector.get_connection_type() == "postgres" else """
-            INSERT INTO articles (title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, datetime('now'))
+            INSERT INTO articles (id, title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
         """
         title = article_data.get("title", "")[:250]
         meta_title = article_data.get("meta_title", title)[:250]
@@ -234,6 +263,7 @@ def generate_article(req: TopicRequest):
         tags = article_data.get("tags", "")[:250]
 
         params = (
+            new_id,
             title,
             article_data.get("content", ""),
             article_data.get("summary", ""),
@@ -241,17 +271,18 @@ def generate_article(req: TopicRequest):
             subcategory,
             tags,
             meta_title,
-            article_data.get("meta_description", article_data.get("summary", ""))
+            article_data.get("meta_description", article_data.get("summary", "")),
+            today_str
         )
         res = DBConnector.execute_query(query, params)
-        return {"id": res[0]["id"] if res else None, **article_data}
+        return {"id": new_id, **article_data}
     except Exception as e:
         error_msg = f"Error: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
         raise HTTPException(status_code=500, detail=error_msg)
 
 @app.put("/api/articles/{article_id}")
-def update_article(article_id: int, req: ArticleUpdate):
+def update_article(article_id: str, req: ArticleUpdate):
     query = """
         UPDATE articles 
         SET title = %s, content = %s, summary = %s, category = %s, subcategory = %s, tags = %s, meta_title = %s, meta_description = %s
@@ -266,7 +297,7 @@ def update_article(article_id: int, req: ArticleUpdate):
     return {"message": "Article updated successfully."}
 
 @app.delete("/api/articles/{article_id}")
-def delete_article(article_id: int):
+def delete_article(article_id: str):
     query = "DELETE FROM articles WHERE id = %s" if DBConnector.get_connection_type() == "postgres" else "DELETE FROM articles WHERE id = ?"
     DBConnector.execute_query(query, (article_id,))
     return {"message": "Article deleted."}
@@ -435,7 +466,7 @@ def compile_video(script_id: int, background_tasks: BackgroundTasks):
 
 # 5. Publishing Endpoints
 @app.post("/api/publish/website/{article_id}")
-def publish_website(article_id: int):
+def publish_website(article_id: str):
     articles = DBConnector.execute_query("SELECT * FROM articles WHERE id = %s" if DBConnector.get_connection_type() == "postgres" else "SELECT * FROM articles WHERE id = ?", (article_id,))
     if not articles:
         raise HTTPException(status_code=404, detail="Article not found.")
