@@ -25,9 +25,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers and system dependencies
+# Install Playwright Chromium browser
 RUN playwright install chromium
-RUN playwright install-deps
+
+# Install system dependencies for Chromium (updating apt cache first)
+RUN apt-get update && playwright install-deps chromium && rm -rf /var/lib/apt/lists/*
 
 # Copy backend source code
 COPY backend/ .
