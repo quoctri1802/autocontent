@@ -126,26 +126,31 @@ class TrendsResearcher:
             model = genai.GenerativeModel("gemini-1.5-flash")
             
             prompt = """
-Bạn là công cụ "AI Trend Hunter" của cộng đồng 'Mẹ Bỉm Thông Thái'.
-Nhiệm vụ của bạn là nghiên cứu và phát hiện các chủ đề, từ khóa, trào lưu, và các cuộc thảo luận đang cực kỳ "hot" (viral) trên các nền tảng mạng xã hội (Facebook, TikTok, Instagram, YouTube Reels) tại Việt Nam liên quan đến các lĩnh vực:
-1. Chăm sóc sức khỏe trẻ sơ sinh & trẻ nhỏ (ví dụ: dịch sởi, sốt xuất huyết, tay chân miệng, tiêu chảy, ho sốt, viêm phổi...).
-2. Phương pháp nuôi dạy con (giấc ngủ EASY, ăn dặm BLW, ăn dặm kiểu Nhật, rèn tự lập...).
-3. Dinh dưỡng & sữa mẹ (kích sữa, tắc sữa, trữ sữa, sữa công thức, thực phẩm bổ sung...).
-4. Tâm lý mẹ bầu và mẹ sau sinh (trầm cảm sau sinh, mẹo lấy lại vóc dáng, chăm sóc bản thân...).
-5. Trào lưu/thảo luận tranh cãi nóng hổi trên MXH đang được các mẹ bỉm bàn tán xôn xao.
+Bạn là công cụ "AI Trend Hunter" chuyên biệt cho cộng đồng 'Mẹ Bỉm Thông Thái'.
+Hãy đóng vai trò là một chuyên gia nghiên cứu và phát hiện các trào lưu, chủ đề, từ khóa nóng hổi (viral) đang thu hút nhiều sự quan tâm và thảo luận nhất của các mẹ bầu và mẹ bỉm sữa trên các nền tảng mạng xã hội Việt Nam (TikTok, Facebook Groups, Reels).
 
-Hãy trả về danh sách gồm 12 chủ đề nóng hổi nhất hiện tại. Mỗi chủ đề phải thực tế, gần gũi với mạng xã hội Việt Nam và có định dạng JSON như sau:
+Yêu cầu cực kỳ quan trọng:
+1. Tập trung HOÀN TOÀN vào chủ đề về mẹ bầu, mẹ bỉm sữa, chăm sóc bé sơ sinh và trẻ nhỏ.
+2. Các mảng chính bao gồm:
+   - Chăm sóc sức khỏe trẻ em (dịch bệnh thường gặp ở trẻ như sởi, tay chân miệng, ho sốt giao mùa, viêm phổi, tiêu chảy, dị ứng...).
+   - Phương pháp nuôi dạy con (rèn giấc ngủ EASY, ăn dặm BLW/kiểu Nhật, rèn bé tự lập, phát triển vận động...).
+   - Nuôi con sữa mẹ & Dinh dưỡng (kích sữa, thông tắc tia sữa, trữ sữa, thực đơn ăn dặm, bổ sung vi chất như D3K2, sắt, DHA cho bé...).
+   - Chăm sóc mẹ bầu & mẹ sau sinh (kiêng cữ khoa học, trầm cảm sau sinh, phục hồi sức khỏe, giảm cân giữ dáng an toàn...).
+   - Trào lưu thảo luận tranh cãi nóng hổi trong các hội nhóm mẹ bỉm (ví dụ: mẹ chồng nàng dâu trong kiêng cữ, phương pháp nuôi dạy con truyền thống vs hiện đại...).
+3. Tuyệt đối TRÁNH các chủ đề chung chung về gia đình, hôn nhân, tình yêu, đời sống xã hội hoặc y tế người lớn không liên quan đến mẹ và bé.
+
+Hãy trả về danh sách gồm 12 chủ đề nóng hổi nhất hiện tại dưới dạng JSON sau:
 [
   {
-    "keyword": "Tên chủ đề/từ khóa hot ngắn gọn, thu hút (ví dụ: 'Trào lưu rèn con tự ngủ theo EASY từ 2 tuần tuổi')",
+    "keyword": "Tên chủ đề/từ khóa hot ngắn gọn, thu hút (ví dụ: 'Mẹo xử lý khi trẻ sơ sinh bị ọc sữa, trớ sữa sinh lý')",
     "source": "Nguồn phát hiện xu hướng (ví dụ: 'TikTok Trend', 'Facebook Group thảo luận', 'Reels Viral', 'Google Search Trend')",
     "popularity_score": 85,
     "is_viral": true,
-    "generated_ideas": "Gợi ý định hướng viết bài viết hoặc làm video ngắn để admin khai thác chủ đề này"
+    "generated_ideas": "Gợi ý định hướng cụ thể để viết bài blog hoặc kịch bản video ngắn cho admin"
   }
 ]
 
-Lưu ý: Chỉ trả về JSON thuần túy trong khối ```json ```, không có văn bản giải thích ngoài khối JSON.
+Lưu ý: Chỉ trả về duy nhất JSON trong khối ```json ```, không có thêm bất kỳ lời dẫn giải thích nào khác ngoài khối JSON.
 """
             response = model.generate_content(prompt)
             clean_text = response.text.strip()
