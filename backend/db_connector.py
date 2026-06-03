@@ -199,6 +199,7 @@ class DBConnector:
         # Check and add missing columns for existing tables
         migrations = [
             ("articles", "subcategory", "VARCHAR(100)"),
+            ("articles", "status", "VARCHAR(50) DEFAULT 'draft'"),
             ("articles", "meta_title", "VARCHAR(255)"),
             ("articles", "meta_description", text_type),
             ("articles", "author", "VARCHAR(100) DEFAULT 'Bác sĩ Hải Anh'"),
