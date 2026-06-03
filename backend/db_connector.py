@@ -44,7 +44,8 @@ class DBConnector:
                 # Postgres
                 with conn.cursor(cursor_factory=cursor_factory) as cursor:
                     cursor.execute(query, params or ())
-                    if query.strip().upper().startswith(("SELECT", "INSERT RETURNING")):
+                    normalized_query = query.strip().upper()
+                    if normalized_query.startswith("SELECT") or "RETURNING" in normalized_query:
                         result = cursor.fetchall()
                         conn.commit()
                         return [dict(row) for row in result]

@@ -68,7 +68,7 @@ class TrendsResearcher:
                                 "keyword": title,
                                 "source": "VnExpress RSS",
                                 "popularity_score": score,
-                                "is_viral": 1 if score > 70 else 0,
+                                "is_viral": True if score > 70 else False,
                                 "generated_ideas": f"Phân tích chủ đề: {title}. Gợi ý viết bài về chăm sóc bé dựa trên tin tức này."
                             })
                 except Exception as e:
@@ -108,7 +108,7 @@ class TrendsResearcher:
                 "keyword": idea["keyword"],
                 "source": "Seasonal Engine",
                 "popularity_score": idea["score"],
-                "is_viral": 1 if idea["score"] > 85 else 0,
+                "is_viral": True if idea["score"] > 85 else False,
                 "generated_ideas": f"Chủ đề theo mùa: {idea['keyword']}. Viết bài tư vấn chi tiết cho mẹ bỉm sữa."
             })
         return trends
