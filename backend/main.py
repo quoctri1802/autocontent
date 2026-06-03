@@ -76,6 +76,103 @@ def home():
         "environment_variables": "injected" if not missing else f"missing keys: {', '.join(missing)}"
     }
 
+@app.get("/api/debug/diagnose")
+def diagnose_system():
+    import traceback
+    result = {
+        "database_connection": "failed",
+        "database_type": DBConnector.get_connection_type(),
+        "gemini_api_key_configured": bool(Config.GEMINI_API_KEY),
+        "db_schema": {},
+        "dry_run_generation": "not_started",
+        "dry_run_db_insert": "not_started",
+        "errors": []
+    }
+    
+    # 1. Check DB Connection & Schema
+    try:
+        conn, cursor_factory = DBConnector.get_connection()
+        result["database_connection"] = "success"
+        cursor = conn.cursor()
+        
+        tables = ["articles", "video_scripts", "facebook_posts", "trends", "system_settings"]
+        schema_info = {}
+        for table in tables:
+            try:
+                if DBConnector.get_connection_type() == "postgres":
+                    cursor.execute(f"""
+                        SELECT column_name, data_type, character_maximum_length 
+                        FROM information_schema.columns 
+                        WHERE table_name = '{table}'
+                    """)
+                    columns = cursor.fetchall()
+                    schema_info[table] = [dict(col) for col in columns]
+                else:
+                    cursor.execute(f"PRAGMA table_info({table})")
+                    columns = cursor.fetchall()
+                    schema_info[table] = [dict(col) for col in columns]
+            except Exception as table_err:
+                schema_info[table] = f"Error querying schema: {str(table_err)}"
+        result["db_schema"] = schema_info
+        conn.close()
+    except Exception as db_err:
+        result["errors"].append({"step": "db_connection_and_schema", "error": str(db_err), "traceback": traceback.format_exc()})
+
+    # 2. Dry Run Gemini Article Generation
+    article_data = None
+    try:
+        topic = "rèn ngủ EASY cho bé"
+        article_data = ContentGenerator.generate_article(topic)
+        result["dry_run_generation"] = "success"
+        diagnostic_data = article_data.copy()
+        if "content" in diagnostic_data:
+            diagnostic_data["content"] = diagnostic_data["content"][:200] + "... [TRUNCATED]"
+        result["dry_run_generated_data"] = diagnostic_data
+    except Exception as gen_err:
+        result["dry_run_generation"] = "failed"
+        result["errors"].append({"step": "dry_run_generation", "error": str(gen_err), "traceback": traceback.format_exc()})
+
+    # 3. Dry Run DB Insert
+    if article_data:
+        try:
+            query = """
+                INSERT INTO articles (title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s, %s, NOW())
+                RETURNING id
+            """ if DBConnector.get_connection_type() == "postgres" else """
+                INSERT INTO articles (title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, datetime('now'))
+            """
+            title = article_data.get("title", "")[:250]
+            meta_title = article_data.get("meta_title", title)[:250]
+            category = article_data.get("category", "Chăm sóc bé")[:95]
+            subcategory = article_data.get("subcategory", "")[:95]
+            tags = article_data.get("tags", "")[:250]
+
+            params = (
+                title,
+                article_data.get("content", ""),
+                article_data.get("summary", ""),
+                category,
+                subcategory,
+                tags,
+                meta_title,
+                article_data.get("meta_description", article_data.get("summary", ""))
+            )
+            res = DBConnector.execute_query(query, params)
+            result["dry_run_db_insert"] = "success"
+            result["dry_run_db_insert_result"] = res
+            
+            if res and res[0].get("id"):
+                cleanup_query = "DELETE FROM articles WHERE id = %s" if DBConnector.get_connection_type() == "postgres" else "DELETE FROM articles WHERE id = ?"
+                DBConnector.execute_query(cleanup_query, (res[0]["id"],))
+                result["dry_run_db_cleanup"] = "success"
+        except Exception as insert_err:
+            result["dry_run_db_insert"] = "failed"
+            result["errors"].append({"step": "dry_run_db_insert", "error": str(insert_err), "traceback": traceback.format_exc()})
+
+    return result
+
 # 1. Trends & Research
 @app.get("/api/trends")
 def get_trends(limit: int = 15):
@@ -107,6 +204,7 @@ def get_articles():
 
 @app.post("/api/articles/generate")
 def generate_article(req: TopicRequest):
+    import traceback
     try:
         article_data = ContentGenerator.generate_article(req.topic)
         # Save as draft
@@ -118,20 +216,28 @@ def generate_article(req: TopicRequest):
             INSERT INTO articles (title, content, summary, category, subcategory, tags, status, meta_title, meta_description, created_at)
             VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, datetime('now'))
         """
+        title = article_data.get("title", "")[:250]
+        meta_title = article_data.get("meta_title", title)[:250]
+        category = article_data.get("category", "Chăm sóc bé")[:95]
+        subcategory = article_data.get("subcategory", "")[:95]
+        tags = article_data.get("tags", "")[:250]
+
         params = (
-            article_data["title"],
-            article_data["content"],
+            title,
+            article_data.get("content", ""),
             article_data.get("summary", ""),
-            article_data.get("category", "Chăm sóc bé"),
-            article_data.get("subcategory", ""),
-            article_data.get("tags", ""),
-            article_data.get("meta_title", article_data["title"]),
+            category,
+            subcategory,
+            tags,
+            meta_title,
             article_data.get("meta_description", article_data.get("summary", ""))
         )
         res = DBConnector.execute_query(query, params)
         return {"id": res[0]["id"] if res else None, **article_data}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = f"Error: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @app.put("/api/articles/{article_id}")
 def update_article(article_id: int, req: ArticleUpdate):
@@ -161,6 +267,7 @@ def get_facebook_posts():
 
 @app.post("/api/facebook-posts/generate")
 def generate_fb_post(req: TopicRequest):
+    import traceback
     try:
         post_data = ContentGenerator.generate_facebook_post(req.topic)
         query = """
@@ -174,7 +281,9 @@ def generate_fb_post(req: TopicRequest):
         res = DBConnector.execute_query(query, (post_data["content"],))
         return {"id": res[0]["id"] if res else None, **post_data}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = f"Error: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @app.put("/api/facebook-posts/{post_id}")
 def update_fb_post(post_id: int, req: FBPostUpdate):
@@ -195,6 +304,7 @@ def get_video_scripts():
 
 @app.post("/api/video-scripts/generate")
 def generate_video_script(req: TopicRequest):
+    import traceback
     try:
         script = ContentGenerator.generate_video_script(req.topic)
         # Format scenes for saving (we compress scenes array to a JSON string)
@@ -208,18 +318,25 @@ def generate_video_script(req: TopicRequest):
             INSERT INTO video_scripts (title, hook, voiceover_text, visual_prompts, bg_music, voice_model, status, created_at)
             VALUES (?, ?, ?, ?, ?, ?, 'draft', datetime('now'))
         """
+        title = script.get("title", "")[:250]
+        hook = script.get("hook", "")[:250]
+        bg_music = script.get("bg_music", "lullaby")[:90]
+        voice_model = script.get("voice_model", "vi-VN-HoaiMyNeural")[:90]
+
         params = (
-            script["title"],
-            script.get("hook", ""),
+            title,
+            hook,
             " ".join([s["voiceover_text"] for s in script["scenes"]]), # concatenated text
             scenes_json, # visual_prompts stores full JSON list of scenes
-            script.get("bg_music", "lullaby"),
-            script.get("voice_model", "vi-VN-HoaiMyNeural")
+            bg_music,
+            voice_model
         )
         res = DBConnector.execute_query(query, params)
         return {"id": res[0]["id"] if res else None, **script}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = f"Error: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @app.put("/api/video-scripts/{script_id}")
 def update_video_script(script_id: int, req: VideoScriptUpdate):
