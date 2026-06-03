@@ -3,7 +3,7 @@ import sqlite3
 import urllib.parse as urlparse
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from .config import Config
+from config import Config
 
 class DBConnector:
     _connection_type = "sqlite"
