@@ -60,7 +60,11 @@ Lưu ý: Chỉ trả về JSON thuần túy, không có văn bản giải thích
             model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(prompt)
             json_text = cls._clean_json_response(response.text)
-            return json.loads(json_text)
+            article_data = json.loads(json_text)
+            # Validate schema has key fields
+            if not isinstance(article_data, dict) or "title" not in article_data or "content" not in article_data:
+                raise ValueError("Invalid article schema returned by Gemini API.")
+            return article_data
         except Exception as e:
             print(f"Error generating article via Gemini: {e}")
             return cls._mock_article(topic)
@@ -91,7 +95,11 @@ Lưu ý: Chỉ trả về JSON thuần túy, không có văn bản giải thích
             model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(prompt)
             json_text = cls._clean_json_response(response.text)
-            return json.loads(json_text)
+            post_data = json.loads(json_text)
+            # Validate schema has content field
+            if not isinstance(post_data, dict) or "content" not in post_data:
+                raise ValueError("Invalid FB post schema returned by Gemini API.")
+            return post_data
         except Exception as e:
             print(f"Error generating FB post via Gemini: {e}")
             return cls._mock_facebook_post(topic)
