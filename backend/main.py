@@ -187,6 +187,58 @@ def diagnose_system():
             result["dry_run_db_insert"] = "failed"
             result["errors"].append({"step": "dry_run_db_insert", "error": str(insert_err), "traceback": traceback.format_exc()})
 
+    # 4. Dry Run Gemini Video Script Generation
+    script_data = None
+    try:
+        script_topic = "3 cách hạ sốt nhanh cho bé"
+        script_data = ContentGenerator.generate_video_script(script_topic)
+        result["dry_run_video_script_generation"] = "success"
+        # Truncate scenes for clean diagnostic output
+        diagnostic_script = script_data.copy()
+        if "scenes" in diagnostic_script and len(diagnostic_script["scenes"]) > 0:
+            diagnostic_script["scenes"] = diagnostic_script["scenes"][:1]
+        result["dry_run_video_script_data"] = diagnostic_script
+    except Exception as script_gen_err:
+        result["dry_run_video_script_generation"] = "failed"
+        result["errors"].append({"step": "dry_run_video_script_generation", "error": str(script_gen_err), "traceback": traceback.format_exc()})
+
+    # 5. Dry Run Video Script DB Insert
+    if script_data:
+        try:
+            scenes_json = json.dumps(script_data["scenes"], ensure_ascii=False)
+            query = """
+                INSERT INTO video_scripts (title, hook, voiceover_text, visual_prompts, bg_music, voice_model, status, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'draft', NOW())
+                RETURNING id
+            """ if DBConnector.get_connection_type() == "postgres" else """
+                INSERT INTO video_scripts (title, hook, voiceover_text, visual_prompts, bg_music, voice_model, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'draft', datetime('now'))
+            """
+            title = script_data.get("title", "")[:250]
+            hook = script_data.get("hook", "")[:250]
+            bg_music = script_data.get("bg_music", "lullaby")[:90]
+            voice_model = script_data.get("voice_model", "vi-VN-HoaiMyNeural")[:90]
+
+            params = (
+                title,
+                hook,
+                " ".join([s["voiceover_text"] for s in script_data["scenes"]]),
+                scenes_json,
+                bg_music,
+                voice_model
+            )
+            res = DBConnector.execute_query(query, params)
+            result["dry_run_video_script_db_insert"] = "success"
+            result["dry_run_video_script_db_insert_result"] = res
+            
+            if res and res[0].get("id"):
+                cleanup_query = "DELETE FROM video_scripts WHERE id = %s" if DBConnector.get_connection_type() == "postgres" else "DELETE FROM video_scripts WHERE id = ?"
+                DBConnector.execute_query(cleanup_query, (res[0]["id"],))
+                result["dry_run_video_script_db_cleanup"] = "success"
+        except Exception as script_insert_err:
+            result["dry_run_video_script_db_insert"] = "failed"
+            result["errors"].append({"step": "dry_run_video_script_db_insert", "error": str(script_insert_err), "traceback": traceback.format_exc()})
+
     return result
 
 # 1. Trends & Research
