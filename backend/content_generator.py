@@ -132,7 +132,11 @@ Lưu ý:
             model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(prompt)
             json_text = cls._clean_json_response(response.text)
-            return json.loads(json_text)
+            script_data = json.loads(json_text)
+            # Validate JSON schema matches expected video script structure
+            if not isinstance(script_data, dict) or "scenes" not in script_data or not isinstance(script_data["scenes"], list) or len(script_data["scenes"]) == 0:
+                raise ValueError("Invalid script schema returned by Gemini API.")
+            return script_data
         except Exception as e:
             print(f"Error generating video script via Gemini: {e}")
             return cls._mock_video_script(topic)
