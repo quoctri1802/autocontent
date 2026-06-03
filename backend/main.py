@@ -117,6 +117,14 @@ def diagnose_system():
             except Exception as table_err:
                 schema_info[table] = f"Error querying schema: {str(table_err)}"
         result["db_schema"] = schema_info
+
+        try:
+            cursor.execute("SELECT * FROM articles LIMIT 3")
+            sample_rows = cursor.fetchall()
+            result["articles_sample"] = [dict(row) for row in sample_rows]
+        except Exception as sample_err:
+            result["articles_sample_error"] = str(sample_err)
+
         conn.close()
     except Exception as db_err:
         result["errors"].append({"step": "db_connection_and_schema", "error": str(db_err), "traceback": traceback.format_exc()})
