@@ -126,31 +126,6 @@ class TrendsResearcher:
         cursor = conn.cursor()
         is_postgres = DBConnector.get_connection_type() == "postgres"
 
-        # Check if trends table has correct constraint. If not, recreate it.
-        try:
-            if is_postgres:
-                # Ensure trends table has UNIQUE constraint on keyword
-                cursor.execute("""
-                    SELECT count(*) FROM pg_constraint 
-                    WHERE conname = 'trends_keyword_key' OR conname = 'unique_trends_keyword'
-                """)
-                # If unique constraint not present, let's migrate safely
-                # (Easiest way to fix old schema in development is dropping cache table)
-                # We do this because of early migrations.
-                cursor.execute("SELECT count(*) FROM pg_indexes WHERE indexname = 'trends_keyword_key'")
-                if cursor.fetchone()[0] == 0:
-                    print("Migrating trends table to add unique constraint...")
-                    cursor.execute("DROP TABLE IF EXISTS trends;")
-                    conn.commit()
-                    # Re-initialize DB
-                    DBConnector.init_db()
-                    # Re-open cursor after drop/recreate
-                    conn, cursor_factory = DBConnector.get_connection()
-                    cursor = conn.cursor()
-        except Exception as migrate_err:
-            print(f"Migration check warning: {migrate_err}")
-            conn.rollback()
-
         insert_count = 0
         for trend in all_trends:
             try:

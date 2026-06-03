@@ -82,10 +82,25 @@ class DBConnector:
         conn, _ = cls.get_connection()
         cursor = conn.cursor()
 
-        # Postgres schemas have slightly different types than SQLite, but we can write SQL standard tables.
-        # SQLite uses standard types as well.
-        
         is_postgres = cls._connection_type == "postgres"
+        
+        # Schema migration check: Drop trends table if it lacks the UNIQUE constraint
+        if is_postgres:
+            try:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM information_schema.table_constraints 
+                    WHERE table_name='trends' AND constraint_type='UNIQUE'
+                """)
+                res = cursor.fetchone()
+                if res and res[0] == 0:
+                    # Table exists but lacks UNIQUE constraint. Drop to recreate.
+                    print("PostgreSQL 'trends' table lacks UNIQUE constraint. Dropping to migrate...")
+                    cursor.execute("DROP TABLE IF EXISTS trends CASCADE")
+                    conn.commit()
+            except Exception as migrate_err:
+                print(f"Trends schema check skipped/warning: {migrate_err}")
+                conn.rollback()
+
         serial_type = "SERIAL PRIMARY KEY" if is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
         timestamp_type = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
         text_type = "TEXT"
