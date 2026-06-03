@@ -2,6 +2,7 @@ import xml.etree.ElementTree as ET
 import httpx
 import re
 import datetime
+import asyncio
 from db_connector import DBConnector
 from config import Config
 
@@ -13,42 +14,62 @@ class TrendsResearcher:
         "rốn", "vàng da", "tắm bé", "easy", "ngủ ngon", "rèn ngủ", "mọc răng", "khóc đêm"
     ]
 
+    # Pre-compiled regex pattern for fast matching
+    _keywords_pattern = None
+
     @classmethod
-    def fetch_rss_trends(cls):
-        """Fetches latest articles from VnExpress and filters for parenting keywords."""
+    def _get_keywords_regex(cls):
+        if cls._keywords_pattern is None:
+            # Escape keywords and join with OR (|)
+            escaped = [re.escape(kw) for kw in cls.PARENTING_KEYWORDS]
+            # Match anywhere in text (case-insensitive)
+            cls._keywords_pattern = re.compile(r'(' + '|'.join(escaped) + r')', re.IGNORECASE)
+        return cls._keywords_pattern
+
+    @classmethod
+    async def fetch_rss_trends(cls):
+        """Fetches latest articles from VnExpress and filters for parenting keywords in parallel."""
         urls = [
             "https://vnexpress.net/rss/gia-dinh.rss",
             "https://vnexpress.net/rss/suc-khoe.rss"
         ]
         
         found_trends = []
-        
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
+        
+        # Pre-compile/fetch regex
+        keywords_re = cls._get_keywords_regex()
+        html_tags_re = re.compile(r'<[^>]*>')
 
-        with httpx.Client(headers=headers, timeout=10.0) as client:
-            for url in urls:
+        async with httpx.AsyncClient(headers=headers, timeout=5.0) as client:
+            # Fetch all RSS feeds concurrently
+            tasks = [client.get(url) for url in urls]
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for response in responses:
+                if isinstance(response, Exception) or response.status_code != 200:
+                    continue
+                
                 try:
-                    response = client.get(url)
-                    if response.status_code != 200:
-                        continue
-                    
                     root = ET.fromstring(response.text)
                     for item in root.findall(".//item"):
                         title = item.find("title").text or ""
                         description = item.find("description").text or ""
                         link = item.find("link").text or ""
                         
-                        # Clean description HTML tags
-                        clean_desc = re.sub(r'<[^>]*>', '', description)
+                        # Clean description HTML tags quickly
+                        clean_desc = html_tags_re.sub('', description)
+                        combined_text = f"{title} {clean_desc}"
                         
-                        # Match parenting keywords
-                        matched_words = [kw for kw in cls.PARENTING_KEYWORDS if kw in title.lower() or kw in clean_desc.lower()]
+                        # Find all keyword matches via regex in O(N)
+                        matches = keywords_re.findall(combined_text)
                         
-                        if matched_words:
-                            # Calculate popularity score based on keyword density
-                            score = min(40 + len(matched_words) * 15, 95)
+                        if matches:
+                            unique_matches = set(m.lower() for m in matches)
+                            # Calculate popularity score based on unique keyword matches
+                            score = min(40 + len(unique_matches) * 15, 95)
                             found_trends.append({
                                 "keyword": title,
                                 "source": "VnExpress RSS",
@@ -57,7 +78,7 @@ class TrendsResearcher:
                                 "generated_ideas": f"Phân tích chủ đề: {title}. Gợi ý viết bài về chăm sóc bé dựa trên tin tức này."
                             })
                 except Exception as e:
-                    print(f"Error reading RSS {url}: {e}")
+                    print(f"Error parsing RSS XML: {e}")
                     
         return found_trends
 
@@ -77,7 +98,7 @@ class TrendsResearcher:
         elif month in [9, 10, 11]: # Fall/Transition season
             seasonal_ideas = [
                 {"keyword": "Thời điểm tiêm phòng Cúm mùa hiệu quả nhất cho bé", "score": 88},
-                {"keyword": "Cách giữ ấm cổ họng, phòng viêm phế quản khi giao mùa", "score": 85},
+                {"keyword": "Cách giữ ấm cổ họng, phòng viêm phế quan khi giao mùa", "score": 85},
                 {"keyword": "Bổ sung Vitamin D3 K2 thế nào khi trời ít nắng?", "score": 80}
             ]
         else: # Winter/Spring
@@ -99,14 +120,16 @@ class TrendsResearcher:
         return trends
 
     @classmethod
-    def update_trends_database(cls):
-        """Fetches RSS and seasonal trends, then inserts them into the DB."""
-        rss_trends = cls.fetch_rss_trends()
+    async def update_trends_database(cls):
+        """Fetches RSS and seasonal trends, then inserts them into the DB concurrently."""
+        # Fetch RSS trends concurrently, and generate seasonal trends
+        rss_trends_task = cls.fetch_rss_trends()
         seasonal_trends = cls.get_seasonal_trends()
         
+        rss_trends = await rss_trends_task
         all_trends = rss_trends + seasonal_trends
         
-        # Insert or ignore (using REPLACE or INSERT ON CONFLICT)
+        # Batch insert to minimize Neon Postgres round-trips
         conn, cursor_factory = DBConnector.get_connection()
         cursor = conn.cursor()
         is_postgres = DBConnector.get_connection_type() == "postgres"

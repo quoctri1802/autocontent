@@ -81,8 +81,8 @@ def get_trends(limit: int = 15):
     return TrendsResearcher.get_latest_trends(limit)
 
 @app.post("/api/trends/fetch")
-def fetch_trends():
-    count = TrendsResearcher.update_trends_database()
+async def fetch_trends():
+    count = await TrendsResearcher.update_trends_database()
     return {"message": "Trends updated successfully.", "items_added": count}
 
 # 2. Articles CRUD
