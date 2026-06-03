@@ -151,7 +151,7 @@ class DBConnector:
             source VARCHAR(100),
             popularity_score INTEGER DEFAULT 50,
             analyzed_at {timestamp_type},
-            is_viral {boolean_type} DEFAULT 0,
+            is_viral {boolean_type} DEFAULT FALSE,
             generated_ideas {text_type}
         )
         """)
