@@ -3,8 +3,8 @@ import os
 import json
 from datetime import datetime
 from playwright.sync_api import sync_playwright
-from .db_connector import DBConnector
-from .config import Config
+from db_connector import DBConnector
+from config import Config
 
 class Publisher:
 

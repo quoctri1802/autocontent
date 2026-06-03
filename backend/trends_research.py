@@ -2,8 +2,8 @@ import xml.etree.ElementTree as ET
 import httpx
 import re
 import datetime
-from .db_connector import DBConnector
-from .config import Config
+from db_connector import DBConnector
+from config import Config
 
 class TrendsResearcher:
     # Standard keywords in Vietnamese parenting

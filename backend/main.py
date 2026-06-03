@@ -6,12 +6,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
 
-from .config import Config
-from .db_connector import DBConnector
-from .trends_research import TrendsResearcher
-from .content_generator import ContentGenerator
-from .video_generator import VideoGenerator
-from .publisher import Publisher
+from config import Config
+from db_connector import DBConnector
+from trends_research import TrendsResearcher
+from content_generator import ContentGenerator
+from video_generator import VideoGenerator
+from publisher import Publisher
 
 app = FastAPI(title="Mẹ Bỉm Thông Thái Content Engine API", version="1.0.0")
 

@@ -1,7 +1,7 @@
 import json
 import re
 import google.generativeai as genai
-from .config import Config
+from config import Config
 
 class ContentGenerator:
     _configured = False

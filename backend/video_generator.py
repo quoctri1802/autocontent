@@ -5,7 +5,7 @@ import random
 from PIL import Image, ImageDraw, ImageFont
 import edge_tts
 from moviepy.editor import ImageClip, AudioFileClip, CompositeVideoClip, VideoFileClip, concatenate_videoclips
-from .config import Config
+from config import Config
 
 class VideoGenerator:
     # 9:16 vertical video resolution for TikTok/Reels
