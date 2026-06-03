@@ -1,0 +1,21 @@
+# Credentials and secrets
+backend/.env
+backend/cookies/*.json
+
+# Databases
+backend/mbte_local.db
+backend/mbte_local.db-journal
+
+# Rendered Media and Temporary Files
+backend/static/videos/*.mp4
+backend/temp_render/
+backend/fonts/
+
+# NodeJS dependencies & build folders
+node_modules/
+dist/
+.eslintcache
+
+# OS files
+.DS_Store
+Thumbs.db

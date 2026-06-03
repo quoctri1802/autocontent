@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Keep generated videos persistent on host VPS
+      - ./backend/static:/app/static
+      # Keep browser session cookies persistent
+      - ./backend/cookies:/app/cookies
+      # Keep local SQLite DB file persistent (if Postgres not used)
+      - ./backend/mbte_local.db:/app/mbte_local.db
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      # Hot reload in dev, but node_modules isolated in container
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+    depends_on:
+      - backend
