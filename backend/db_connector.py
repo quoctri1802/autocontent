@@ -196,6 +196,48 @@ class DBConnector:
         except Exception as ex:
             print(f"Error seeding settings: {ex}")
 
+        # Check and add missing columns for existing tables
+        migrations = [
+            ("articles", "subcategory", "VARCHAR(100)"),
+            ("articles", "meta_title", "VARCHAR(255)"),
+            ("articles", "meta_description", text_type),
+            ("articles", "author", "VARCHAR(100) DEFAULT 'Bác sĩ Hải Anh'"),
+            ("articles", "scheduled_at", "TIMESTAMP"),
+            ("articles", "published_at", "TIMESTAMP"),
+            
+            ("facebook_posts", "image_url", "VARCHAR(512)"),
+            ("facebook_posts", "fb_post_id", "VARCHAR(100)"),
+            ("facebook_posts", "published_at", "TIMESTAMP"),
+            
+            ("video_scripts", "hook", "VARCHAR(255)"),
+            ("video_scripts", "visual_prompts", text_type),
+            ("video_scripts", "bg_music", "VARCHAR(100) DEFAULT 'lullaby'"),
+            ("video_scripts", "voice_model", "VARCHAR(100) DEFAULT 'vi-VN-HoaiMyNeural'"),
+            ("video_scripts", "video_path", "VARCHAR(512)"),
+            ("video_scripts", "tiktok_published", f"{boolean_type} DEFAULT FALSE"),
+            ("video_scripts", "facebook_published", f"{boolean_type} DEFAULT FALSE"),
+            ("video_scripts", "youtube_published", f"{boolean_type} DEFAULT FALSE"),
+            ("video_scripts", "scheduled_at", "TIMESTAMP"),
+            
+            ("trends", "is_viral", f"{boolean_type} DEFAULT FALSE"),
+            ("trends", "generated_ideas", text_type)
+        ]
+        
+        for table, column, col_type in migrations:
+            try:
+                if is_postgres:
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}")
+                else:
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                conn.commit()
+            except Exception as alter_err:
+                if is_postgres:
+                    print(f"Postgres column migration warning: {column} in {table}: {alter_err}")
+                try:
+                    conn.rollback()
+                except:
+                    pass
+
         conn.commit()
         conn.close()
         print(f"Database initialized successfully with {cls._connection_type.upper()}!")

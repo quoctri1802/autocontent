@@ -93,7 +93,10 @@ def diagnose_system():
     try:
         conn, cursor_factory = DBConnector.get_connection()
         result["database_connection"] = "success"
-        cursor = conn.cursor()
+        if cursor_factory:
+            cursor = conn.cursor(cursor_factory=cursor_factory)
+        else:
+            cursor = conn.cursor()
         
         tables = ["articles", "video_scripts", "facebook_posts", "trends", "system_settings"]
         schema_info = {}
