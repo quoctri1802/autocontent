@@ -68,11 +68,12 @@ class VideoScriptUpdate(BaseModel):
 
 @app.get("/")
 def home():
+    missing = Config.get_missing_keys()
     return {
         "status": "online",
         "message": "Mẹ Bỉm Thông Thái Content Engine is running.",
         "database_type": DBConnector.get_connection_type(),
-        "missing_keys": Config.get_missing_keys()
+        "environment_variables": "injected" if not missing else f"missing keys: {', '.join(missing)}"
     }
 
 # 1. Trends & Research
